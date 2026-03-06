@@ -9,22 +9,46 @@ const LOG_TYPES = [
   { value: 'windows', label: 'Windows Event Log', hint: 'CSV export from Event Viewer' },
 ];
 
+const SAMPLES = [
+  { logType: 'apache', label: 'Apache sample', file: '/samples/apache_access.log', filename: 'apache_access.log' },
+  { logType: 'ssh',    label: 'SSH sample',    file: '/samples/auth.log',           filename: 'auth.log' },
+  { logType: 'windows',label: 'Windows sample',file: '/samples/windows_events.csv', filename: 'windows_events.csv' },
+];
+
 export default function LogUploader() {
   const [logType, setLogType] = useState('apache');
   const { setResult, setLoading, setError, isLoading } = useDashboardStore();
 
-  const onDrop = useCallback(async (acceptedFiles) => {
-    if (!acceptedFiles.length) return;
+  const runUpload = useCallback(async (file, type) => {
     setLoading(true);
     try {
-      const result = await uploadLogs(acceptedFiles[0], logType);
+      const result = await uploadLogs(file, type);
       setResult(result);
     } catch (err) {
       setError(err.response?.data?.error ?? err.message ?? 'Upload failed');
     } finally {
       setLoading(false);
     }
-  }, [logType, setResult, setLoading, setError]);
+  }, [setResult, setLoading, setError]);
+
+  const onDrop = useCallback((acceptedFiles) => {
+    if (!acceptedFiles.length) return;
+    runUpload(acceptedFiles[0], logType);
+  }, [logType, runUpload]);
+
+  const loadSample = useCallback(async (sample) => {
+    setLoading(true);
+    try {
+      const res = await fetch(sample.file);
+      if (!res.ok) throw new Error('Could not fetch sample file');
+      const blob = await res.blob();
+      const file = new File([blob], sample.filename, { type: 'text/plain' });
+      await runUpload(file, sample.logType);
+    } catch (err) {
+      setError(err.message ?? 'Failed to load sample');
+      setLoading(false);
+    }
+  }, [runUpload, setError, setLoading]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -88,9 +112,22 @@ export default function LogUploader() {
           )}
         </div>
 
-        <p className="text-center text-gray-600 text-xs mt-4">
-          Sample files available in the <code className="text-gray-500">samples/</code> folder
-        </p>
+        {/* Sample file buttons */}
+        <div className="mt-5">
+          <p className="text-center text-gray-500 text-xs mb-3">— or try a sample —</p>
+          <div className="grid grid-cols-3 gap-2">
+            {SAMPLES.map((s) => (
+              <button
+                key={s.logType}
+                onClick={() => loadSample(s)}
+                disabled={isLoading}
+                className="py-2 px-3 rounded-lg border border-gray-700 text-gray-400 text-xs hover:border-blue-500 hover:text-blue-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
